@@ -1,10 +1,8 @@
-import logging
 import urllib.request
+from astrbot import logger
 from astrbot.api.star import Context, Star, register
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.event.filter import event_message_type, EventMessageType
-
-logger = logging.getLogger(__name__)
 
 @register(
     "cr4zythursday",
@@ -22,7 +20,9 @@ class CrazyThursdayPlugin(Star):
         super().__init__(context)
         self.config = config
 
-        # 从 config 中获取 keywords 数组，如果没有用户配置，则使用默认值
+        # 从 config 中获取配置，如果没有用户配置，则使用默认值
+        self.group_whitelist = self.config.get("group_whitelist", [])
+        self.group_whitelist = [int(gid) for gid in self.group_whitelist]
         self.keywords = self.config.get("keywords", ["疯狂星期四"])
         logger.debug(f"已加载关键词列表: {self.keywords}")
 
@@ -31,23 +31,19 @@ class CrazyThursdayPlugin(Star):
         """
         当消息中包含配置的任意关键词时，访问 https://vme.im/api?format=text 并返回响应。
         """
+        # 群组白名单检查
+        group_id_str = event.get_group_id()
+        if group_id_str:  # 如果是群聊
+            group_id = int(group_id_str)
+            if self.group_whitelist and group_id not in self.group_whitelist:
+                return
+        # 如果是私聊，则不检查白名单
+
         msg_obj = event.message_obj
         text = msg_obj.message_str or ""
 
-        # DEBUG 日志，只有在日志等级为 DEBUG 时才会输出
-        logger.debug("=== Debug: AstrBotMessage ===")
-        logger.debug("Bot ID: %s", msg_obj.self_id)
-        logger.debug("Session ID: %s", msg_obj.session_id)
-        logger.debug("Message ID: %s", msg_obj.message_id)
-        logger.debug("Sender: %s", msg_obj.sender)
-        logger.debug("Group ID: %s", msg_obj.group_id)
-        logger.debug("Message Chain: %s", msg_obj.message)
-        logger.debug("Raw Message: %s", msg_obj.raw_message)
-        logger.debug("Timestamp: %s", msg_obj.timestamp)
-        logger.debug("============================")
-
-        # 判断消息中是否包含任意关键词
-        if any(kw in text for kw in self.keywords):
+        # 判断消息中是否包含任意关键词，且不是唤醒对话
+        if any(kw in text for kw in self.keywords) and not event.is_at_or_wake_command:
             try:
                 # with urllib.request.urlopen("https://vme.im/api?format=text") as resp:  
                 with urllib.request.urlopen("https://vme.im/api/random?format=text") as resp:
